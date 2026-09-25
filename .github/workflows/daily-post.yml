@@ -17,6 +17,10 @@ on:
         description: "Dry run (no upload, no post, no credits spent)"
         type: boolean
         default: false
+      check:
+        description: "Verify credentials only (posts nothing)"
+        type: boolean
+        default: false
 
 jobs:
   post:
@@ -42,4 +46,6 @@ jobs:
           TIMEZONE: America/New_York
           POST_AT: "11:11"
         run: |
-          python post.py --verbose ${{ inputs.dry_run && '--dry-run' || '' }}
+          python post.py --verbose \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            ${{ inputs.check && '--check' || '' }}

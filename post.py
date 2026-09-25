@@ -80,6 +80,23 @@ def resolve_target(post_at, tz):
     )
 
 
+def build_auth():
+    return OAuth1(
+        require("X_API_KEY"), require("X_API_SECRET"),
+        require("X_ACCESS_TOKEN"), require("X_ACCESS_TOKEN_SECRET"),
+    )
+
+
+def verify_credentials(auth):
+    """Confirm the keys resolve to the right account before a real run needs them."""
+    resp = requests.get("https://api.x.com/2/users/me", auth=auth, timeout=30)
+    if resp.status_code != 200:
+        raise PostError(explain(resp, "credential check"))
+    who = resp.json().get("data", {})
+    print(f"Credentials OK - posting as @{who.get('username')} "
+          f"({who.get('name')}, id {who.get('id')})")
+
+
 def decide(now, target):
     """Should this run post? Returns (bool, reason).
 
@@ -245,6 +262,8 @@ def main():
                         help="Print each upload step.")
     parser.add_argument("--now", action="store_true",
                         help="Post immediately instead of waiting for POST_AT.")
+    parser.add_argument("--check", action="store_true",
+                        help="Verify credentials and exit. Posts nothing.")
     args = parser.parse_args()
 
     load_env()
@@ -272,6 +291,10 @@ def main():
     print(f"Clip: {media_path} ({os.path.getsize(media_path) / 1048576:.2f} MB)")
     print(f"Now {now.strftime('%H:%M:%S %Z')}, target {target.strftime('%H:%M:%S %Z')}")
 
+    if args.check:
+        verify_credentials(build_auth())
+        return
+
     if not args.now:
         proceed, reason = decide(now, target)
         print(reason)
@@ -282,10 +305,7 @@ def main():
         print("\nDRY RUN - nothing uploaded, nothing posted, no credits spent.")
         return
 
-    auth = OAuth1(
-        require("X_API_KEY"), require("X_API_SECRET"),
-        require("X_ACCESS_TOKEN"), require("X_ACCESS_TOKEN_SECRET"),
-    )
+    auth = build_auth()
 
     # Upload before the deadline: transcoding takes a variable few seconds and
     # would otherwise push the post past 11:11.
