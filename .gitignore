@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+
+# Old 2024 scripts - contain hardcoded API credentials, never commit these
+twt.py
+tempCodeRunnerFile.py

@@ -1,0 +1,45 @@
+name: Daily X post
+
+on:
+  schedule:
+    # Target is 11:11 America/New_York. GitHub cron only speaks UTC and has no
+    # daylight-saving awareness, so both offsets are scheduled 26 min early:
+    #   14:45 UTC = 10:45 EDT (summer)  ->  posts
+    #   15:45 UTC = 10:45 EST (winter)  ->  posts
+    # In each season the other entry sees a lead time past MAX_LEAD and exits
+    # without posting, so exactly one run per day goes out. The early start
+    # absorbs GitHub's scheduling lag; post.py waits out the remainder.
+    - cron: "45 14 * * *"
+    - cron: "45 15 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (no upload, no post, no credits spent)"
+        type: boolean
+        default: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Post to X
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+          START_DATE: ${{ vars.START_DATE }}
+          TIMEZONE: America/New_York
+          POST_AT: "11:11"
+        run: |
+          python post.py --verbose ${{ inputs.dry_run && '--dry-run' || '' }}
