@@ -26,11 +26,20 @@ cp .env.example .env     # fill in the four keys and START_DATE
 python post.py --dry-run --now  # prints day number and text, posts nothing
 ```
 
-When the dry run looks right, do one real post to prove the pipe end to end:
+Verify the credentials resolve to the right account without posting:
+
+```bash
+python post.py --check
+```
+
+When that looks right, a real post to prove the pipe end to end:
 
 ```bash
 python post.py --verbose --now
 ```
+
+`--check` also exists as a checkbox on the manual **Run workflow** trigger, which
+is the fastest way to confirm the GitHub secrets are correct after changing them.
 
 ### 3. GitHub Actions
 
