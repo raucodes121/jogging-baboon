@@ -87,6 +87,43 @@ def build_auth():
     )
 
 
+def user_id_from_token():
+    """An OAuth 1.0a access token is '<user_id>-<secret>', so the id is free.
+
+    Saves a billed /2/users/me call on every catch-up run.
+    """
+    token = require("X_ACCESS_TOKEN")
+    if "-" not in token:
+        raise PostError("X_ACCESS_TOKEN is not in the expected '<id>-<secret>' form")
+    return token.split("-", 1)[0]
+
+
+def already_posted_today(auth, text, tz):
+    """Has this exact day's post already gone out?
+
+    Checked explicitly rather than leaning on X's duplicate rejection, so the
+    catch-up run can never double-post if that heuristic ever loosens.
+    """
+    resp = requests.get(
+        f"https://api.x.com/2/users/{user_id_from_token()}/tweets", auth=auth,
+        params={"max_results": 10, "tweet.fields": "created_at"}, timeout=30)
+    if resp.status_code != 200:
+        raise PostError(explain(resp, "timeline check"))
+
+    today = datetime.now(ZoneInfo(tz)).date()
+    for tweet in resp.json().get("data", []):
+        body = tweet.get("text", "")
+        # "Day 3" must not match "Day 30", so require an exact match or a
+        # trailing space before the media link X appends.
+        if body != text and not body.startswith(text + " "):
+            continue
+        created = datetime.fromisoformat(
+            tweet["created_at"].replace("Z", "+00:00")).astimezone(ZoneInfo(tz))
+        if created.date() == today:
+            return created
+    return None
+
+
 def verify_credentials(auth):
     """Confirm the keys resolve to the right account before a real run needs them."""
     resp = requests.get("https://api.x.com/2/users/me", auth=auth, timeout=30)
@@ -268,6 +305,9 @@ def main():
                         help="Post immediately instead of waiting for POST_AT.")
     parser.add_argument("--check", action="store_true",
                         help="Verify credentials and exit. Posts nothing.")
+    parser.add_argument("--catch-up", action="store_true",
+                        help="Safety net: post now, but only if today's post "
+                             "never went out. Ignores POST_AT.")
     args = parser.parse_args()
 
     load_env()
@@ -298,6 +338,15 @@ def main():
     if args.check:
         verify_credentials(build_auth())
         return
+
+    if args.catch_up:
+        posted = already_posted_today(build_auth(), text, tz)
+        if posted:
+            print(f"Day {n} already posted at {posted.strftime('%H:%M:%S %Z')}. "
+                  "Nothing to do.")
+            return
+        print(f"Day {n} has NOT gone out today - posting late as a safety net.")
+        args.now = True
 
     if not args.now:
         proceed, reason, is_failure = decide(now, target)

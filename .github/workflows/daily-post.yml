@@ -1,16 +1,15 @@
 name: Daily X post
 
+# The daily post is triggered EXTERNALLY via workflow_dispatch, because
+# GitHub's own cron proved unusable for a time-critical job: on 2026-09-25 it
+# fired 187 and 227 minutes late, and on 2026-09-26 it did not fire at all.
+# Dispatched runs, by contrast, started within ~30s every time.
+#
+# The one schedule below is therefore NOT the primary trigger. It is a late
+# safety net that posts only if the day's post never went out, so an hours-late
+# firing is harmless - which is the one thing GitHub cron is still good for.
+
 on:
-  schedule:
-    # Target is 11:11 America/New_York. GitHub cron only speaks UTC and has no
-    # daylight-saving awareness, so both offsets are scheduled 26 min early:
-    #   14:45 UTC = 10:45 EDT (summer)  ->  posts
-    #   15:45 UTC = 10:45 EST (winter)  ->  posts
-    # In each season the other entry sees a lead time past MAX_LEAD and exits
-    # without posting, so exactly one run per day goes out. The early start
-    # absorbs GitHub's scheduling lag; post.py waits out the remainder.
-    - cron: "45 14 * * *"
-    - cron: "45 15 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -21,6 +20,11 @@ on:
         description: "Verify credentials only (posts nothing)"
         type: boolean
         default: false
+  schedule:
+    # 20:00 UTC = 16:00 EDT / 15:00 EST, hours after the 11:11 target. Runs
+    # with --catch-up: it checks the timeline first and exits quietly if the
+    # post is already there. Even a 6-hour delay stays inside the same ET day.
+    - cron: "0 20 * * *"
 
 jobs:
   post:
@@ -47,5 +51,6 @@ jobs:
           POST_AT: "11:11"
         run: |
           python post.py --verbose \
+            ${{ github.event_name == 'schedule' && '--catch-up' || '' }} \
             ${{ inputs.dry_run && '--dry-run' || '' }} \
             ${{ inputs.check && '--check' || '' }}
