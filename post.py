@@ -98,19 +98,23 @@ def verify_credentials(auth):
 
 
 def decide(now, target):
-    """Should this run post? Returns (bool, reason).
+    """Should this run post? Returns (proceed, reason, is_failure).
 
-    Two cron entries fire each day, one per daylight-saving offset. This is
-    what keeps the off-season one from double-posting.
+    Two cron entries fire each day, one per daylight-saving offset. Skipping
+    the off-season one is routine and silent. Arriving after the target is
+    NOT routine - it means the scheduler was late and no post went out, so it
+    has to exit loudly or the miss is invisible behind a green checkmark.
     """
     lead = (target - now).total_seconds()
     if lead > MAX_LEAD:
         return False, (f"Target is {lead / 60:.0f} min away - this is the "
-                       "off-season cron. The other scheduled run handles today.")
+                       "off-season cron. The other scheduled run handles "
+                       "today."), False
     if lead < -GRACE:
-        return False, (f"Target passed {-lead / 60:.0f} min ago. Exiting rather "
-                       "than posting at the wrong time.")
-    return True, f"{lead / 60:.0f} min of lead time"
+        return False, (f"MISSED: target passed {-lead / 60:.0f} min ago, so "
+                       "nothing was posted. The scheduler fired late. Run the "
+                       "workflow manually to post today."), True
+    return True, f"{lead / 60:.0f} min of lead time", False
 
 
 def wait_until(target, now):
@@ -296,10 +300,13 @@ def main():
         return
 
     if not args.now:
-        proceed, reason = decide(now, target)
-        print(reason)
+        proceed, reason, is_failure = decide(now, target)
         if not proceed:
+            if is_failure:
+                raise PostError(reason)
+            print(reason)
             return
+        print(reason)
 
     if args.dry_run:
         print("\nDRY RUN - nothing uploaded, nothing posted, no credits spent.")
